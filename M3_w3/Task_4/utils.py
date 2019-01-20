@@ -41,7 +41,6 @@ def load_data(IMG_SIZE,directory):
         for image in os.listdir(directory_train):
             x = np.asarray(Image.open(os.path.join(directory_train, image)))
             x = np.expand_dims(imresize(x, (IMG_SIZE, IMG_SIZE,3)), axis=0)
-            #feat=self.model.predict(x/255.0)
             images_train.append(x/255.0)
             labels_train.append(j)
         j = j + 1
