@@ -23,22 +23,24 @@ def histogram_intersection(M, N):
 
     return K_int
 
-def build_svm_histogram(C, train_features, test_features,labels_train, labels_test):
+def build_svm_histogram(train_features, test_features,labels_train, labels_test):
 
-    stdSlr= StandardScaler().fit(train_features)
-    scaled_train= stdSlr.transform(train_features)
-    scaled_test = stdSlr.transform(test_features)
-    clf = svm.SVC(kernel='precomputed', C=0.01)
 
-    kernel=histogram_intersection(scaled_train,scaled_train)
+    parameters = [{'kernel': ['precomputed']
+                      , 'C': [10, 1, 0.1, 0.2, 0.01, 0.002,0.001]}]
+
+    clf = GridSearchCV(SVC(), parameters, n_jobs=4, cv=5, refit=True, return_train_score=True)
+
+    kernel=histogram_intersection(np.array(train_features),np.array(labels_train))
     clf.fit(kernel,labels_train)
 
-    #accuracy_train = 100 * clf.score(scaled_train, labels_train)
-    #print('SVM train: ')
-    #print(accuracy_train)
 
-    predict = histogram_intersection(scaled_test, scaled_train)
+    predict = histogram_intersection(np.array(test_features),np.array( train_features))
     predictions = clf.predict(predict)
+
+    accuracy_test = accuracy_score(labels_test,predictions,normalize=True)
+    print('SVM test:')
+    print(100*accuracy_test)
 
     print('Confusion Matrix')
 
@@ -55,15 +57,11 @@ def build_svm_histogram(C, train_features, test_features,labels_train, labels_te
     for i, j in itertools.product(range(conf_matrix.shape[0]), range(conf_matrix.shape[1])):
         plt.text(j, i, conf_matrix[i, j], horizontalalignment="center",
                  color="white" if conf_matrix[i, j] > thresh else "black")
-    plt.savefig('conf'+'.png')
+    plt.savefig('conf2'+'.png')
     plt.close()
 
-    accuracy_test = accuracy_score(labels_test,predictions,normalize=True)
-    print('SVM test:')
-    print(accuracy_test)
-    accuracy_svm = 100 * clf.score(predict, labels_test)
-    print('SVM2 test:')
-    print(accuracy_svm)
+
+
 
 def build_svm_kernel(kernel,C, gamma, train_features, test_features,labels_train, labels_test):
 
@@ -88,9 +86,10 @@ def build_svm_kernel_crossvalidation(train_features, test_features,labels_train,
                    ,'C': [10,1, 0.1 ,0.2, 0.001, 0.0001]}]
 
     clf = GridSearchCV( SVC(), parameters,n_jobs=4, cv=5,refit=True,return_train_score=True)
+
     clf.fit(train_features, labels_train)
     
-    results = pd.DataFrame(list(clf.cv_results_))
+    results = pd.DataFrame(list(clf.cv_results_['mean_train_score']))
     results.to_csv('result_table.csv', index=False)
 
     print('Results')
@@ -101,22 +100,34 @@ def build_svm_kernel_crossvalidation(train_features, test_features,labels_train,
     print('Best results')
     print(clf.best_score_)
 
-    clf = SVC(C=clf.best_params_['C'],
+    """clf = SVC(C=clf.best_params_['C'],
               kernel=clf.best_params_['kernel'],
               gamma=clf.best_params_['gamma'])
-    clf.fit(train_features, labels_train)
+    clf.fit(train_features, labels_train)"""
    
     # Accuracy test
-    predicted = clf.predict(test_features)
-
-    print('MLP+SVM accuracy')
-    print(100*accuracy_score(labels_test, predicted, normalize=True))
 
     #Using best_estimator
     predicted = best_clf.predict(test_features)
 
     print('MLP+SVM accuracy')
     print(100*accuracy_score(labels_test, predicted, normalize=True))
+
+    conf_matrix = confusion_matrix(labels_test, predicted)
+    plt.figure()
+    plt.imshow(conf_matrix, interpolation='nearest', cmap=plt.cm.Greens)
+    plt.title('Confusion matrix')
+    plt.colorbar()
+    classes = list(set(labels_test))
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes, rotation=90)
+    plt.yticks(tick_marks, classes)
+    thresh = conf_matrix.max() / 2.
+    for i, j in itertools.product(range(conf_matrix.shape[0]), range(conf_matrix.shape[1])):
+        plt.text(j, i, conf_matrix[i, j], horizontalalignment="center",
+                 color="white" if conf_matrix[i, j] > thresh else "black")
+    plt.savefig('conf1'+'.png')
+    plt.close()
 
 
 

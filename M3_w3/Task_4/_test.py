@@ -14,16 +14,16 @@ import numpy as np
 from build_svm import *
 from scipy.misc import imresize
 from sklearn import svm
+from keras import regularizers
+from keras import optimizers
+import datetime
 
 
 #PARAMETERS
 IMG_SIZE    = 32
 BATCH_SIZE  = 16
 DATASET_DIR = '/home/mcv/datasets/MIT_split'
-MODEL_FNAME = 'my_first_mlp.h5'
-KERNEL='linear'
-
-
+MODEL_FNAME = 'my_firstmlp.h5'
 
 
 
@@ -37,16 +37,20 @@ print('Building MLP model...\n')
 #Build the Multi Layer Perceptron model
 model = Sequential()
 model.add(Reshape((IMG_SIZE*IMG_SIZE*3,),input_shape=(IMG_SIZE, IMG_SIZE, 3),name='first'))
-model.add(Dense(units=2048, activation='relu',name='second'))
-#model.add(Dense(units=1024, activation='relu'))
+model.add(Dense(units=2046, activation='relu',kernel_regularizer=regularizers.l2(0.01)))
+model.add(Dense(units=1024, activation='relu',kernel_regularizer=regularizers.l2(0.01)))
+model.add(Dense(units=512, activation='relu',name='final',kernel_regularizer=regularizers.l2(0.01)))
 model.add(Dense(units=8, activation='softmax'))
+
+sgd = optimizers.SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True)
 
 model.compile(loss='categorical_crossentropy',
               optimizer='sgd',
               metrics=['accuracy'])
 
 print(model.summary())
-plot_model(model, to_file='modelMLP.png', show_shapes=True, show_layer_names=True)
+plot_model(model, to_file= 'outputs/modelMLP '+str(datetime.datetime.now())+'.png', show_shapes=True, show_layer_names=True)
+
 
 print('Done!\n')
 
@@ -54,6 +58,8 @@ if os.path.exists(MODEL_FNAME):
   print('WARNING: model file '+MODEL_FNAME+' exists and will be overwritten!\n')
 
 print('Start training...\n')
+
+
 
 # this is the dataset configuration we will use for training
 # only rescaling
@@ -113,10 +119,10 @@ plt.ylabel('loss')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
 plt.savefig('loss' + MODEL_FNAME + '.jpg')
-
+plt.close()
 # SVM classifcation using the output of last layer
 
-model_layer = Model(inputs=model.input, outputs=model.get_layer('second').output)
+model_layer = Model(inputs=model.input, outputs=model.get_layer('final').output)
 
 directory_train=DATASET_DIR+ '/train/'
 train_data,labels_train =load_data(IMG_SIZE,directory_train)
@@ -131,8 +137,6 @@ labels_test2=np.array(labels_test)
 train_features=[]
 i=0
 for image in train_data:
-    
-    
     train_features.append(model_layer.predict(np.array(image))[0])
     i=i+1
 
@@ -146,23 +150,10 @@ train_features=np.array(train_features)
 test_features=np.array(test_features)
 print(np.shape(train_features))
 
+print('SVM-CrossValidation histogram')
+build_svm_histogram(train_features[:],test_features[:],labels_train[:],labels_test2[:])
+
 print('SVM-CrossValidation')
 build_svm_kernel_crossvalidation(train_features[:].tolist(),test_features[:].tolist(),labels_train[:].tolist(),labels_test2[:].tolist())
 
-"""KERNEL='rbf'
 
-if KERNEL=='linear':
-    clf= svm.SVC(kernel='linear',C=0.01,gamma=0.002).fit(train_features[:].tolist(), labels_train[:].tolist())
-
-if KERNEL=='rbf':
-    clf = svm.SVC(kernel='rbf', C=1, gamma=0.002).fit(train_features[:].tolist(), labels_train[:].tolist())
-
-if KERNEL=='sigmoid':
-    clf= svm.SVC(kernel='sigmoid',C=1,gamma=0.002).fit(train_features[:].tolist(), labels_train[:].tolist())
-
-
-predicted= clf.predict(test_features[:].tolist())
-
-accuracy = accuracy_score(labels_test2[:].tolist(), predicted, normalize=True)
-
-print(accuracy)"""
