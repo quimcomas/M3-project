@@ -8,24 +8,16 @@ from keras.layers import Flatten, Dense, Reshape
 from keras.preprocessing.image import ImageDataGenerator
 from keras.utils import plot_model
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
 from PIL import Image
 import numpy as np
-from build_svm import *
 from scipy.misc import imresize
-from keras.models import load_model
 
 
 #user defined variables
 IMG_SIZE    = 32
 BATCH_SIZE  = 16
 DATASET_DIR = '/home/mcv/datasets/MIT_split'
-MODEL_FNAME = 'my_first_mlp.h5'
-
-
-
-
-
+MODEL_FNAME = '/home/group01/work/my_first_mlp.h5'
 
 if not os.path.exists(DATASET_DIR):
   print(Color.RED, 'ERROR: dataset directory '+DATASET_DIR+' do not exists!\n')
@@ -92,7 +84,7 @@ history = model.fit_generator(
 
 print('Done!\n')
 print('Saving the model into '+MODEL_FNAME+' \n')
-#model.save_weights(MODEL_FNAME)  # always save your weights after training or during training
+model.save_weights(MODEL_FNAME)  # always save your weights after training or during training
 print('Done!\n')
 
   # summarize history for accuracy
@@ -101,9 +93,8 @@ plt.plot(history.history['val_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-print('holiii vull plots\n')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('accuracy' + MODEL_FNAME + '.jpg')
+plt.savefig('accuracy.jpg')
 plt.close()
   # summarize history for loss
 plt.plot(history.history['loss'])
@@ -112,19 +103,17 @@ plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('loss' + MODEL_FNAME + '.jpg')
-
-#SVM
+plt.savefig('loss.jpg')
 
 #to get the output of a given layer
  #crop the model up to a certain layer
-
 model_layer = Model(inputs=model.input, outputs=model.get_layer('second').output)
 
-
-train_features=model_layer.predict_generator(train_generator)
-test_features=model_layer.predict_generator(validation_generator)
-train_labels = train_generator.classes
-val_labels = validation_generator.classes
-
-build_svm_kernel_crossvalidation(train_features, test_features,train_labels, val_labels)
+#get the features from images
+directory = DATASET_DIR+'/test/coast'
+x = np.asarray(Image.open(os.path.join(directory, os.listdir(directory)[0] )))
+x = np.expand_dims(imresize(x, (IMG_SIZE, IMG_SIZE, 3)), axis=0)
+print('prediction for image ' + os.path.join(directory, os.listdir(directory)[0] ))
+features = model_layer.predict(x/255.0)
+print(features)
+print('Done!')
