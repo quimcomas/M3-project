@@ -1,0 +1,193 @@
+from __future__ import print_function
+from utils import *
+from keras.models import Sequential, Model
+from keras.layers import Flatten, Dense, Reshape, Dropout
+from keras.preprocessing.image import ImageDataGenerator
+import numpy as np
+import glob
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.neighbors import KNeighborsClassifier
+
+# user defined variables
+PATCH_SIZE = 64
+BATCH_SIZE = 16
+DATASET_DIR = '/home/mcv/datasets/MIT_split'
+print("dataset dir defined. proceeding...")
+PATCHES_DIR = '/home/grupo03/project/data/MIT2_split_patches'
+MODEL_FNAME = '/home/grupo03/project/patch_based_mlp_dropout.h5'
+
+
+def build_mlp(input_size=PATCH_SIZE, phase='TRAIN'):
+    model = Sequential()
+    model.add(Reshape((input_size * input_size * 3,), input_shape=(input_size, input_size, 3)))
+    model.add(Dense(units=2048, activation='relu'))
+    model.add(Dense(units=1024, activation='relu', name='third'))
+    if phase == 'TEST':
+        model.add(
+            Dense(units=8, activation='linear'))  # In test phase we softmax the average output over the image patches
+    else:
+        model.add(Dense(units=8, activation='softmax'))
+    return model
+
+
+if not os.path.exists(DATASET_DIR):
+    colorprint(Color.RED, 'ERROR: dataset directory ' + DATASET_DIR + ' do not exists!\n')
+    quit()
+if not os.path.exists(PATCHES_DIR):
+    colorprint(Color.YELLOW, 'WARNING: patches dataset directory ' + PATCHES_DIR + ' do not exists!\n')
+    colorprint(Color.BLUE, 'Creating image patches dataset into ' + PATCHES_DIR + '\n')
+    generate_image_patches_db(DATASET_DIR, PATCHES_DIR, patch_size=PATCH_SIZE)
+    colorprint(Color.BLUE, 'Done!\n')
+
+colorprint(Color.BLUE, 'Building MLP model...\n')
+
+model = build_mlp(input_size=PATCH_SIZE)
+
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+print(model.summary())
+
+colorprint(Color.BLUE, 'Done!\n')
+
+if not os.path.exists(MODEL_FNAME):
+    colorprint(Color.YELLOW, 'WARNING: model file ' + MODEL_FNAME + ' do not exists!\n')
+    colorprint(Color.BLUE, 'Start training...\n')
+    # this is the dataset configuration we will use for training
+    # only rescaling
+    train_datagen = ImageDataGenerator(
+        rescale=1. / 255,
+        horizontal_flip=True)
+
+    # this is the dataset configuration we will use for testing:
+    # only rescaling
+    test_datagen = ImageDataGenerator(rescale=1. / 255)
+
+    # this is a generator that will read pictures found in
+    # subfolers of 'data/train', and indefinitely generate
+    # batches of augmented image data
+    train_generator = train_datagen.flow_from_directory(
+        PATCHES_DIR + '/train',  # this is the target directory
+        target_size=(PATCH_SIZE, PATCH_SIZE),  # all images will be resized to PATCH_SIZExPATCH_SIZE
+        batch_size=BATCH_SIZE,
+        classes=['coast', 'forest', 'highway', 'inside_city', 'mountain', 'Opencountry', 'street', 'tallbuilding'],
+        class_mode='categorical')  # since we use binary_crossentropy loss, we need categorical labels
+
+    # this is a similar generator, for validation data
+    validation_generator = test_datagen.flow_from_directory(
+        PATCHES_DIR + '/test',
+        target_size=(PATCH_SIZE, PATCH_SIZE),
+        batch_size=BATCH_SIZE,
+        classes=['coast', 'forest', 'highway', 'inside_city', 'mountain', 'Opencountry', 'street', 'tallbuilding'],
+        class_mode='categorical')
+
+    model.fit_generator(
+        train_generator,
+        steps_per_epoch=18810 // BATCH_SIZE,
+        epochs=150,
+        validation_data=validation_generator,
+        validation_steps=8070 // BATCH_SIZE)
+
+    colorprint(Color.BLUE, 'Done!\n')
+    colorprint(Color.BLUE, 'Saving the model into ' + MODEL_FNAME + ' \n')
+    model.save_weights(MODEL_FNAME)  # always save your weights after training or during training
+    colorprint(Color.BLUE, 'Done!\n')
+
+colorprint(Color.BLUE, 'Building MLP model for testing...\n')
+
+model = build_mlp(input_size=PATCH_SIZE, phase='TEST')
+print(model.summary())
+
+colorprint(Color.BLUE, 'Done!\n')
+
+colorprint(Color.BLUE, 'Loading weights from ' + MODEL_FNAME + ' ...\n')
+print('\n')
+
+model.load_weights(MODEL_FNAME)
+
+model.compile(loss='categorical_crossentropy',
+              optimizer='adam',
+              metrics=['accuracy'])
+
+#here we obtain the features learnt by mlp:
+
+model_layer = Model(inputs=model.input, outputs=model.get_layer('third').output)
+
+colorprint(Color.BLUE, 'Done!\n')
+
+colorprint(Color.BLUE, 'Start evaluation ...\n')
+
+directory = DATASET_DIR + '/train'
+classes = {'coast': 0, 'forest': 1, 'highway': 2, 'inside_city': 3, 'mountain': 4, 'Opencountry': 5, 'street': 6,
+           'tallbuilding': 7}
+correct = 0.
+# total = 807
+total = 1881
+count = 0
+
+features_set = []
+train_labels = []
+
+for class_dir in os.listdir(directory):
+    cls = classes[class_dir]
+    for imname in os.listdir(os.path.join(directory, class_dir)):
+        im = Image.open(os.path.join(directory, class_dir, imname))
+        patches = image.extract_patches_2d(np.array(im), (PATCH_SIZE, PATCH_SIZE),
+                                           max_patches=int((256 * 256) / (PATCH_SIZE * PATCH_SIZE)))
+        features = model_layer.predict(patches/255.)
+        features_set.append(features)
+        train_labels.append(class_dir)
+        # predicted_cls = np.argmax(softmax(np.mean(out, axis=0)))
+        # if predicted_cls == cls:
+        #     correct += 1
+        count += 1
+        colorprint(Color.BLUE, 'Evaluated images: ' + str(count) + ' / ' + str(total) + '\n')
+
+D = np.vstack(features_set)
+k = 128
+codebook = MiniBatchKMeans(n_clusters=k, verbose=False, batch_size=k * 20, compute_labels=False,
+                           reassignment_ratio=10 ** -4, random_state=42)
+codebook.fit(D)
+visual_words = np.zeros((len(features_set), k), dtype=np.float32)
+for i in range(len(features_set)):
+    words = codebook.predict(features_set[i])
+    visual_words[i, :] = np.bincount(words, minlength=k)
+
+knn = KNeighborsClassifier(n_neighbors=15, n_jobs=-1, metric='euclidean')
+predicted_cls = knn.fit(visual_words, train_labels)
+
+colorprint(Color.BLUE, 'Done!\n')
+# colorprint(Color.GREEN, 'Test Acc. = ' + str(correct / total) + '\n')
+
+train_acc = 100*knn.score(visual_words, train_labels)
+# print(train_acc)
+colorprint(Color.GREEN, 'Train accuracy:'+str(train_acc)+'\n')
+# TEST evaluation
+
+#Test descriptors
+colorprint(Color.BLUE,"Evaluating\n")
+test_features_set = []
+test_labels = []
+test_directory = DATASET_DIR+'/test'
+for test_label in glob.glob(test_directory+'/*'):
+    for filename in glob.glob(test_label+'/*'):
+        im = Image.open(filename)
+        patches = image.extract_patches_2d(np.array(im), (PATCH_SIZE, PATCH_SIZE),
+                                           max_patches=int((256 * 256) / (PATCH_SIZE * PATCH_SIZE)))
+        features = model_layer.predict(patches / 255.0)
+        test_features_set.append(features)
+        test_labels.append(os.path.basename(test_label))
+test_visual_words = np.zeros((len(test_features_set), k), dtype=np.float32)
+for i in range(len(test_features_set)):
+    words = codebook.predict(test_features_set[i])
+    test_visual_words[i, :] = np.bincount(words, minlength=k)
+
+
+test_visual_words=np.vstack(test_visual_words)
+test_labels = np.array(test_labels)
+
+test_accuracy = 100*knn.score(test_visual_words, test_labels)
+colorprint(Color.BLUE, 'Accuracy computed on the validation set\n')
+colorprint(Color.GREEN, 'Accuracy:'+str(test_accuracy)+'\n')
+
