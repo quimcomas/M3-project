@@ -1,0 +1,10 @@
+0.7635489702224731
+1.0
+[[248 0.0 'elu' 0.001 20 100 0]]
+val_loss       NaN
+lr             NaN
+first_neuron   NaN
+batch_size     NaN
+epochs         NaN
+dropout        NaN
+Name: val_loss, dtype: float64
