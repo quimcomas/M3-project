@@ -85,6 +85,8 @@ def getXceptionAugmentedModel(x_train, y_train, x_val, y_val,parameters):
         layer.trainable = False
     #freezing the weights:
 
+
+
     print('Done!\n')
 
     model.compile(loss='categorical_crossentropy',
@@ -195,12 +197,6 @@ if __name__ == "__main__":
     X_train, Y_train = getXYfromGenerator(train_generator)
 
     X_test, Y_test = getXYfromGenerator(validation_generator)
-
-    img_rows, img_cols = 30, 30
-    num_classes = 8
-
-
-    input_shape = (img_rows, img_cols, 1)
 
     X_train = X_train.astype('float32')
     X_test = X_test.astype('float32')
